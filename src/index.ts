@@ -1,12 +1,17 @@
 import { createUnplugin } from 'unplugin'
-import type { Options } from './types'
+import type { Options } from './core/option'
+import { Context } from './core/context'
 
-export default createUnplugin<Options | undefined>(options => ({
-  name: 'unplugin-starter',
-  transformInclude(id) {
-    return id.endsWith('main.ts')
-  },
-  transform(code) {
-    return code.replace('__UNPLUGIN__', `Hello Unplugin! ${options}`)
-  },
-}))
+export default createUnplugin<Options>((options) => {
+  const ctx = new Context(options)
+
+  return {
+    name: 'unplugin-export-file',
+    vite: {
+      configResolved() {
+        ctx.generateExportFile()
+        ctx.setupWatcher()
+      },
+    },
+  }
+})
