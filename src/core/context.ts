@@ -1,9 +1,12 @@
 import { writeFile } from 'node:fs/promises'
-import { basename, extname, resolve } from 'node:path'
+import { basename, dirname, extname, join, resolve } from 'node:path'
 import chokidar from 'chokidar'
-import fg from 'fast-glob'
+import { normalizePath } from '@rollup/pluginutils'
 import type { Options } from './option'
 import { resolveOptions } from './option'
+import { findDirectoryIncludeIndex, findFiles } from './utils'
+
+const EXT_REGEXP = /^.*\.(ts|js|jsx|tsx)$/
 
 export class Context {
   options: Options
@@ -15,20 +18,21 @@ export class Context {
   async generateExportFile() {
     const { dirs, root } = this.options
     dirs.forEach((dir) => {
-      const exportMainPath = resolve(root!, `${dir}/index.ts`)
-      const files = fg.sync(`${dir}/**`, {
-        ignore: ['node_modules'],
-        onlyFiles: true,
-        cwd: root,
-        absolute: false,
-        objectMode: true,
-      })
-      const filePathsContent = files.filter(file => file.name !== 'index.ts').map((file) => {
+      const entryIndex = resolve(root!, dir, 'index.ts')
+      const indexDirectory = findDirectoryIncludeIndex(dirs, root!)
+      const allFiles = findFiles(dirs, root!)
+      const exportFiles = allFiles.filter(file => !indexDirectory.includes(dirname(file.path))).map((file) => {
         const ext = extname(file.path)
-        const importPath = basename(file.path, ext)
-        return `export * from './${importPath}'`
-      }).join('\n')
-      writeFile(exportMainPath, filePathsContent)
+        if (EXT_REGEXP.test(ext)) {
+          const fileName = basename(file.path, extname(file.path))
+          const filePath = join(dirname(file.path), fileName)
+          return `export * from '${filePath}'`
+        }
+        return `export * from '${file.path}'`
+      })
+      const exportDirectory = indexDirectory.map(directory => `export * from '${directory}'`)
+      const allExports = [...exportDirectory, ...exportFiles].map(path => normalizePath(path.replace(`${dir}/`, './'))).join('\n')
+      writeFile(entryIndex, allExports)
     })
   }
 
